@@ -1,28 +1,24 @@
 # Golf Dots Tracker
 
-This is a static web app ready for GitHub Pages.
+Static GitHub Pages build.
 
-## Files included
+## Files
 - index.html
 - styles.css
 - app.js
 - manifest.json
 - sw.js
 
-## Features
-- Hole-by-hole scoring with all players shown on one hole
-- Front/back or alternating-hole color modes
-- Legend and summary tabs
-- Skins carry automatically
-- Data saved in browser local storage
-
 ## Publish on GitHub Pages
 1. Create a new GitHub repository.
-2. Upload the files in this folder to the repo root.
-3. In GitHub, go to Settings → Pages.
-4. Under Build and deployment, choose Deploy from a branch.
-5. Select the main branch and /(root), then save.
-6. Wait a minute, then open the Pages URL.
+2. Upload all files in this folder to the root of the repo.
+3. Commit the files.
+4. In GitHub, open **Settings > Pages**.
+5. Set the source to **Deploy from a branch**.
+6. Choose the **main** branch and the **/root** folder.
+7. Save, then wait for GitHub Pages to publish.
 
-## If an older version keeps showing
-Because the app uses a service worker, do a hard refresh or clear website data in Safari/Chrome after publishing updates.
+## Notes
+- The app saves data in local browser storage on each device.
+- If you previously opened an older version, do a hard refresh or clear site data once.
+- This is a static build, so it does not require Node, Vercel, or a build step.

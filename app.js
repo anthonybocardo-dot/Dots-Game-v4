@@ -1,490 +1,590 @@
+
 const DOT_DEFS = [
-  { id: "skins", name: "Skins Won", value: 1, type: "special", def: "Award a skins dot when a hole is won outright by a single player. If no single player wins the hole, the skin carries to the next hole until won." },
+  { id: "skins", name: "Skins Won", value: 1, type: "special", def: "Award when a hole is won outright by one player. If nobody wins outright, the skin carries forward." },
   { id: "birdie", name: "Birdie", value: 1, type: "positive", def: "Make birdie on the hole." },
   { id: "eagle", name: "Eagle", value: 2, type: "positive", def: "Make eagle on the hole." },
-  { id: "greenie", name: "Greenie", value: 1, type: "positive", def: "Hit the green in regulation on a par 3. Some groups require par or better to keep it." },
+  { id: "greenie", name: "Greenie", value: 1, type: "positive", def: "Hit the green in regulation on a par 3." },
   { id: "sandy", name: "Sandy", value: 1, type: "positive", def: "Make par or better after hitting from a greenside bunker." },
   { id: "barkie", name: "Barkie", value: 1, type: "positive", def: "Hit a tree and still make par or better." },
   { id: "arnie", name: "Arnie", value: 1, type: "positive", def: "Make par or better without hitting the fairway in regulation." },
   { id: "chipin", name: "Chip-In", value: 1, type: "positive", def: "Hole out from off the green." },
   { id: "poley", name: "Poley", value: 1, type: "positive", def: "Make a putt after hitting the flagstick." },
   { id: "pulley", name: "Pulley", value: 1, type: "positive", def: "Make your first putt from outside the length of the flagstick." },
-  { id: "luigi", name: "Luigi", value: 1, type: "positive", def: "Your GIR finishes within the length of the flagstick from the hole." },
-  { id: "double_luigi", name: "Double Luigi", value: 2, type: "positive", def: "Your GIR finishes inside the length of the putter from the hole." },
+  { id: "luigi", name: "Luigi", value: 1, type: "positive", def: "GIR finishes within the length of the flagstick from the hole." },
+  { id: "double_luigi", name: "Double Luigi", value: 2, type: "positive", def: "GIR finishes inside the length of the putter from the hole." },
   { id: "updown", name: "Up-and-Down", value: 1, type: "positive", def: "Get up-and-down for par from off the green." },
   { id: "closest2", name: "Closest in Two", value: 1, type: "positive", def: "On a par 5, be closest to the hole in two shots." },
   { id: "noputt", name: "No Putt", value: 1, type: "positive", def: "Hole out from off the green without taking a putt." },
   { id: "holeout", name: "Hole-Out", value: 1, type: "positive", def: "Any hole-out from outside the green complex." },
   { id: "threeputt", name: "3-Putt", value: -1, type: "penalty", def: "Penalty dot for a 3-putt." },
   { id: "water", name: "Water Ball", value: -1, type: "penalty", def: "Penalty dot for a ball hit into the water." },
-  { id: "ob", name: "Out of Bounds", value: -1, type: "penalty", def: "Penalty dot for a ball hit out of bounds." },
-  { id: "double", name: "Double Bogey+", value: -1, type: "penalty", def: "Penalty dot for double bogey or worse." },
+  { id: "ob", name: "Out of Bounds", value: -1, type: "penalty", def: "Penalty dot for a ball hit OB." },
+  { id: "double", name: "Double Bogey+", value: -1, type: "penalty", def: "Penalty dot for double bogey or worse." }
 ];
-
 const HOLES_FRONT = [1,2,3,4,5,6,7,8,9];
 const HOLES_BACK = [10,11,12,13,14,15,16,17,18];
 const ALL_HOLES = [...HOLES_FRONT, ...HOLES_BACK];
-const STORAGE_KEY = 'golf-dots-final-v1';
-
-const defaultState = {
-  activeTab: 'scorecard',
-  roundName: 'Saturday Dots',
-  courseName: '',
-  valuePerDot: 1,
-  players: ['Tony', 'Player 2', 'Player 3', 'Player 4'],
-  settings: {
-    doubleLuigiOverridesLuigi: true,
-    allowStacking: true,
-    colorMode: 'frontBack',
-  },
-  scores: {
-    'Tony': {},
-    'Player 2': {},
-    'Player 3': {},
-    'Player 4': {},
-  },
-  modal: { open: false, player: '', hole: null },
-  currentHole: 1,
-};
+const STORAGE_KEY = "golf-dots-static-v3";
 
 let state = loadState();
+let ui = {
+  tab: 'scorecard',
+  currentHole: 1,
+  dialogOpen: false,
+  setupDraft: {
+    roundName: state.roundName,
+    courseName: state.courseName,
+    valuePerDot: String(state.valuePerDot)
+  },
+  copied: false
+};
 
-function loadState() {
-  try {
+function createEmptyState(){
+  const players = ["Tony","Player 2","Player 3","Player 4"];
+  const scores = {};
+  players.forEach(p=>scores[p]={});
+  return {
+    roundName: "Saturday Dots",
+    courseName: "",
+    valuePerDot: 1,
+    players,
+    scores,
+    settings: {
+      doubleLuigiOverridesLuigi: true,
+      allowStacking: true,
+      colorMode: "frontBack"
+    }
+  };
+}
+function loadState(){
+  try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(defaultState);
-    const saved = JSON.parse(raw);
-    return mergeState(saved);
-  } catch (e) {
-    return structuredClone(defaultState);
-  }
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return createEmptyState();
 }
-
-function mergeState(saved) {
-  const next = structuredClone(defaultState);
-  Object.assign(next, saved || {});
-  next.settings = { ...defaultState.settings, ...(saved.settings || {}) };
-  next.scores = saved.scores || next.scores;
-  next.players = Array.isArray(saved.players) && saved.players.length ? saved.players : next.players;
-  next.modal = { open: false, player: '', hole: null };
-  next.players.forEach((player) => {
-    if (!next.scores[player]) next.scores[player] = {};
-  });
-  return next;
+function saveState(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
-
-function persist() {
-  const clean = { ...state, modal: { open: false, player: '', hole: null } };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
-}
-
-function getDotById(id) {
-  return DOT_DEFS.find((d) => d.id === id);
-}
-
-function playerHoleDots(player, hole) {
-  return state.scores[player]?.[hole] || [];
-}
-
-function sanitizeHoleDots(dotIds) {
+function getDot(id){ return DOT_DEFS.find(d=>d.id===id); }
+function playerHoleDots(player,hole){ return state.scores[player]?.[hole] || []; }
+function sanitizeDots(dotIds){
   let next = [...dotIds];
-  if (state.settings.doubleLuigiOverridesLuigi && next.includes('double_luigi') && next.includes('luigi')) {
-    next = next.filter((id) => id !== 'luigi');
+  if(state.settings.doubleLuigiOverridesLuigi && next.includes("double_luigi") && next.includes("luigi")){
+    next = next.filter(d=>d!=="luigi");
   }
   return next;
 }
-
-function baseHoleTotal(dotIds) {
-  return dotIds
-    .filter((id) => id !== 'skins')
-    .reduce((sum, id) => sum + (getDotById(id)?.value || 0), 0);
-}
-
-function getSkinCarryValue(player, hole) {
-  const holeNumber = Number(hole);
-  const holeIndex = ALL_HOLES.indexOf(holeNumber);
-  if (holeIndex === -1) return 0;
-
+function skinsWinnerMap(){
+  const result = {};
   let carry = 1;
-  for (let i = 0; i <= holeIndex; i++) {
-    const currentHole = ALL_HOLES[i];
-    const winners = state.players.filter((p) => playerHoleDots(p, currentHole).includes('skins'));
-
-    if (currentHole === holeNumber) {
-      return winners.length === 1 && winners[0] === player ? carry : 0;
-    }
-
-    if (winners.length === 1) {
-      carry = 1;
-    } else {
-      carry += 1;
+  for(const hole of ALL_HOLES){
+    const winners = state.players.filter(p=>playerHoleDots(p,hole).includes("skins"));
+    if(winners.length===1){
+      result[hole]={winner:winners[0], value:carry};
+      carry=1;
+    }else{
+      result[hole]={winner:null, value:0};
+      carry+=1;
     }
   }
-  return 0;
+  return result;
 }
-
-function displayHoleTotal(player, hole) {
-  const dotIds = playerHoleDots(player, hole);
-  const base = baseHoleTotal(dotIds);
-  const skins = dotIds.includes('skins') ? getSkinCarryValue(player, hole) : 0;
-  return base + skins;
+function displayHoleTotal(player,hole){
+  const skinMap = skinsWinnerMap();
+  return playerHoleDots(player,hole).reduce((sum,id)=>{
+    if(id==="skins"){
+      const info = skinMap[hole];
+      return sum + (info && info.winner===player ? info.value : 0);
+    }
+    const dot = getDot(id);
+    return sum + (dot ? dot.value : 0);
+  },0);
 }
-
-function rangeTotal(player, holes) {
-  return holes.reduce((sum, hole) => sum + displayHoleTotal(player, hole), 0);
+function playerRangeTotal(player,holes){
+  return holes.reduce((sum,hole)=>sum+displayHoleTotal(player,hole),0);
 }
-
-function playerTotal(player) {
-  return rangeTotal(player, ALL_HOLES);
+function playerTotal(player){ return playerRangeTotal(player, ALL_HOLES); }
+function moneySummary(){
+  return state.players.map(name=>{
+    const dots = playerTotal(name);
+    const money = +(dots * Number(state.valuePerDot || 0)).toFixed(2);
+    return {name,dots,money};
+  }).sort((a,b)=>b.money-a.money);
 }
-
-function moneySummary() {
-  return state.players
-    .map((name) => ({ name, dots: playerTotal(name), money: playerTotal(name) * Number(state.valuePerDot || 0) }))
-    .sort((a, b) => b.money - a.money);
+function computeSettlements(items){
+  const creditors = items.filter(i=>i.money>0).map(i=>({...i, remaining:i.money}));
+  const debtors = items.filter(i=>i.money<0).map(i=>({...i, remaining:Math.abs(i.money)}));
+  const payments = [];
+  let d=0,c=0;
+  while(d<debtors.length && c<creditors.length){
+    const amount = Math.min(debtors[d].remaining, creditors[c].remaining);
+    if(amount>0) payments.push({from:debtors[d].name,to:creditors[c].name,amount:+amount.toFixed(2)});
+    debtors[d].remaining = +(debtors[d].remaining - amount).toFixed(2);
+    creditors[c].remaining = +(creditors[c].remaining - amount).toFixed(2);
+    if(debtors[d].remaining <= .009) d++;
+    if(creditors[c].remaining <= .009) c++;
+  }
+  return payments;
 }
-
-function moneyClass(num) {
-  return num >= 0 ? 'money-pos' : 'money-neg';
+function buildPayoutMessage(totals, settlements){
+  return [
+    `${state.roundName || "Golf Dots"} payout summary`,
+    `${state.courseName ? state.courseName + " · " : ""}$${Number(state.valuePerDot || 0).toFixed(2)} per dot`,
+    ``,
+    `Totals:`,
+    ...totals.map(item => `${item.name}: ${item.dots > 0 ? '+' : ''}${item.dots} dots (${item.money >= 0 ? '+' : '-'}$${Math.abs(item.money).toFixed(2)})`),
+    ``,
+    `Settle up:`,
+    ...(settlements.length ? settlements.map(item => `${item.from} pays ${item.to} $${item.amount.toFixed(2)}`) : [`No payouts needed.`])
+  ].join('\n');
 }
-
-function totalClass(num) {
-  if (num > 0) return 'pos';
-  if (num < 0) return 'neg';
-  return '';
+function holeClass(hole){
+  if(state.settings.colorMode === 'alternating') return hole % 2 ? 'odd' : 'even';
+  if(state.settings.colorMode === 'neutral') return '';
+  return hole <= 9 ? 'front' : 'back';
 }
-
-function showSigned(num) {
-  return num > 0 ? `+${num}` : `${num}`;
+function setTab(tab){ ui.tab = tab; render(); }
+function toggleDot(player,hole,dotId){
+  const current = playerHoleDots(player,hole);
+  let next;
+  if(state.settings.allowStacking){
+    next = current.includes(dotId) ? current.filter(d=>d!==dotId) : [...current, dotId];
+  }else{
+    next = current.includes(dotId) ? [] : [dotId];
+  }
+  next = sanitizeDots(next);
+  state.scores[player] = state.scores[player] || {};
+  state.scores[player][hole] = next;
+  saveState(); render();
 }
-
-function holeColorClass(hole) {
-  const mode = state.settings.colorMode;
-  if (mode === 'alternating') return hole % 2 === 1 ? 'hole-odd' : 'hole-even';
-  if (mode === 'neutral') return 'hole-neutral';
-  return hole <= 9 ? 'hole-front' : 'hole-back';
+function clearHole(player,hole){
+  state.scores[player] = state.scores[player] || {};
+  state.scores[player][hole] = [];
+  saveState(); render();
 }
-
-function openModal(player, hole) {
-  state.modal = { open: true, player, hole };
-  render();
-}
-
-function closeModal() {
-  state.modal = { open: false, player: '', hole: null };
-  render();
-}
-
-function updateField(key, value, rerender = true) {
-  state[key] = value;
-  persist();
-  if (rerender) render();
-}
-
-function updateSetting(key, value) {
-  state.settings[key] = value;
-  persist();
-  render();
-}
-
-function addPlayer() {
-  const input = document.getElementById('new-player');
-  const name = (input.value || '').trim();
-  if (!name || state.players.includes(name)) return;
+function addPlayer(){
+  const input = document.getElementById('newPlayer');
+  const name = (input?.value || '').trim();
+  if(!name || state.players.includes(name)) return;
   state.players.push(name);
   state.scores[name] = {};
   input.value = '';
-  persist();
-  render();
+  saveState(); render();
 }
-
-function removePlayer(name) {
-  state.players = state.players.filter((p) => p !== name);
+function removePlayer(name){
+  state.players = state.players.filter(p=>p!==name);
   delete state.scores[name];
-  persist();
-  render();
+  saveState(); render();
 }
-
-function toggleDot(dotId) {
-  const { player, hole } = state.modal;
-  if (!player || !hole) return;
-  const current = playerHoleDots(player, hole);
-  let next;
-  if (state.settings.allowStacking) {
-    next = current.includes(dotId) ? current.filter((id) => id !== dotId) : [...current, dotId];
-  } else {
-    next = current.includes(dotId) ? [] : [dotId];
+function commitSetupField(field, value){
+  if(field === 'valuePerDot'){
+    state.valuePerDot = Number(value || 0);
+  }else{
+    state[field] = value;
   }
-  next = sanitizeHoleDots(next);
-  state.scores[player][hole] = next;
-  persist();
-  render();
+  saveState(); render();
 }
-
-function clearHole() {
-  const { player, hole } = state.modal;
-  if (!player || !hole) return;
-  state.scores[player][hole] = [];
-  persist();
-  render();
+function resetRound(){
+  state = createEmptyState();
+  ui.setupDraft = {roundName: state.roundName, courseName: state.courseName, valuePerDot: String(state.valuePerDot)};
+  ui.currentHole = 1;
+  ui.dialogOpen = false;
+  saveState(); render();
 }
-
-function resetRound() {
-  localStorage.removeItem(STORAGE_KEY);
-  state = structuredClone(defaultState);
-  render();
+async function copyPayout(){
+  const totals = moneySummary();
+  const msg = buildPayoutMessage(totals, computeSettlements(totals));
+  try{
+    await navigator.clipboard.writeText(msg);
+    ui.copied = true;
+    render();
+    setTimeout(()=>{ ui.copied = false; render(); }, 1400);
+  }catch(e){}
 }
-
-function setTab(tab) {
-  state.activeTab = tab;
-  render();
+async function sharePayout(){
+  const totals = moneySummary();
+  const msg = buildPayoutMessage(totals, computeSettlements(totals));
+  try{
+    if(navigator.share){
+      await navigator.share({title: `${state.roundName || 'Golf Dots'} payouts`, text: msg});
+    }else{
+      await copyPayout();
+    }
+  }catch(e){}
 }
-
-function renderTabs() {
-  const tabs = [
-    ['scorecard', 'Scorecard'],
-    ['setup', 'Setup'],
-    ['legend', 'Legend'],
-    ['summary', 'Summary'],
-  ];
-  return tabs.map(([id, label]) => `<button class="tab ${state.activeTab === id ? 'active' : ''}" data-tab="${id}">${label}</button>`).join('');
-}
-
-function renderPlayerSummary() {
-  return state.players.map((player) => `
-    <div class="player-summary">
-      <div><strong>${escapeHtml(player)}</strong></div>
-      <div class="muted">Out: ${rangeTotal(player, HOLES_FRONT)}</div>
-      <div class="muted">In: ${rangeTotal(player, HOLES_BACK)}</div>
-      <div class="big">Total: ${playerTotal(player)}</div>
-    </div>
-  `).join('');
-}
-
-
-function renderCurrentHolePlayerCard(player, hole) {
-  const dots = playerHoleDots(player, hole);
-  const total = displayHoleTotal(player, hole);
-  const skinCarry = dots.includes('skins') ? getSkinCarryValue(player, hole) : 0;
-  const tags = dots.length === 0
-    ? '<span class="muted">No dots recorded yet.</span>'
-    : dots.map((id) => {
-        const label = id === 'skins' && skinCarry > 1 ? `Skins x${skinCarry}` : getDotById(id)?.name;
-        return `<span class="tag">${escapeHtml(label || id)}</span>`;
-      }).join('');
-
+function renderTabs(){
   return `
-    <div class="card hole-player-card">
-      <div class="card-title hole-player-head">
-        <span>${escapeHtml(player)}</span>
-        <span class="badge">${showSigned(total)}</span>
-      </div>
-      <div class="card-desc">Out: ${rangeTotal(player, HOLES_FRONT)} · In: ${rangeTotal(player, HOLES_BACK)} · Total: ${playerTotal(player)}</div>
-      <div class="tags hole-player-tags">${tags}</div>
-      <div class="spacer"></div>
-      <button class="action-btn hole-edit-btn" data-edit-player="${escapeHtml(player)}" data-edit-hole="${hole}">Edit dots for ${escapeHtml(player)}</button>
+  <div class="tabs-wrap">
+    <div class="tabs">
+      ${['scorecard','setup','legend','summary'].map(tab=>`
+        <button class="tab ${ui.tab===tab?'active':''}" data-tab="${tab}">${tab[0].toUpperCase()+tab.slice(1)}</button>
+      `).join('')}
     </div>
-  `;
+  </div>`;
 }
-
-function renderHoleNavigator() {
+function renderScorecard(){
+  const skinMap = skinsWinnerMap();
   return `
+  <div class="space-y">
     <div class="card">
-      <div class="hole-nav-head">
-        <div>
-          <div class="card-title">Hole-by-hole scoring</div>
-          <div class="card-desc">Update all players on one hole, then move to the next.</div>
-        </div>
-        <div class="hole-nav-controls">
-          <button class="small-btn" id="prev-hole" ${state.currentHole === 1 ? 'disabled' : ''}>Previous</button>
-          <div class="current-hole-pill ${holeColorClass(state.currentHole)}">
-            <div class="muted">Current hole</div>
-            <div class="current-hole-num">${state.currentHole}</div>
+      <div class="card-h">
+        <div class="header">
+          <div>
+            <div style="font-weight:700;font-size:20px;">Hole-by-hole scoring</div>
+            <div class="muted">See all players on one hole and edit that hole in one popup.</div>
           </div>
-          <button class="small-btn" id="next-hole" ${state.currentHole === 18 ? 'disabled' : ''}>Next</button>
+          <div class="row">
+            <button class="btn" ${ui.currentHole===1?'disabled':''} data-prev-hole="1">Previous</button>
+            <div class="badge ${holeClass(ui.currentHole)}" style="padding:10px 16px;border-radius:16px;">
+              <div><div class="muted" style="font-size:12px;">Current hole</div><div class="big" style="font-size:30px;">${ui.currentHole}</div></div>
+            </div>
+            <button class="btn" ${ui.currentHole===18?'disabled':''} data-next-hole="1">Next</button>
+            <button class="btn primary" data-open-dialog="1">Edit all players</button>
+          </div>
         </div>
       </div>
-      <div class="hole-jump-grid">
-        ${ALL_HOLES.map((hole) => `
-          <button class="hole-jump-btn ${hole === state.currentHole ? 'active' : holeColorClass(hole)}" data-jump-hole="${hole}">${hole}</button>
-        `).join('')}
+      <div class="card-b">
+        <div class="holes-nav">
+          ${ALL_HOLES.map(h=>`<button class="hole-btn ${ui.currentHole===h?'active':''} ${ui.currentHole===h?'':holeClass(h)}" data-hole="${h}">${h}</button>`).join('')}
+        </div>
       </div>
     </div>
-  `;
+    <div class="grid grid-players">
+      ${state.players.map(player=>{
+        const dots = playerHoleDots(player, ui.currentHole);
+        const total = displayHoleTotal(player, ui.currentHole);
+        return `
+          <div class="card">
+            <div class="card-h">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                <div style="font-size:20px;font-weight:700;">${player}</div>
+                <div class="badge dark">${total>0?`+${total}`:total}</div>
+              </div>
+              <div class="muted" style="font-size:14px;">Out: ${playerRangeTotal(player, HOLES_FRONT)} · In: ${playerRangeTotal(player, HOLES_BACK)} · Total: ${playerTotal(player)}</div>
+            </div>
+            <div class="card-b">
+              <div class="row">
+                ${dots.length ? dots.map(id => {
+                  const skin = skinMap[ui.currentHole];
+                  const label = id === 'skins' && skin && skin.winner===player && skin.value>1 ? `Skins x${skin.value}` : getDot(id).name;
+                  return `<span class="badge">${label}</span>`;
+                }).join('') : `<span class="muted" style="font-size:14px;">No dots recorded yet.</span>`}
+              </div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+  </div>`;
 }
-
-function renderLegend() {
+function renderSetup(){
   return `
-    <div class="card">
-      <div class="card-title">Dots legend</div>
-      <div class="card-desc">House rules and scoring reference.</div>
-      <div class="legend-grid">
+  <div class="card">
+    <div class="card-h">
+      <div style="font-size:20px;font-weight:700;">Round setup</div>
+      <div class="muted">Adjust names, values, and display options.</div>
+    </div>
+    <div class="card-b space-y">
+      <div class="grid grid-3">
         <div>
-          <div class="card-title" style="font-size:18px;">Scoring dots</div>
-          ${renderLegendItems('score')}
+          <label class="label">Round name</label>
+          <input class="input" id="roundNameInput" value="${escapeHtml(ui.setupDraft.roundName)}" />
         </div>
         <div>
-          <div class="card-title" style="font-size:18px;">Penalty dots</div>
-          ${renderLegendItems('penalty')}
-          <div class="legend-item house-notes">
-            <strong>Suggested house notes</strong>
-            <ul>
+          <label class="label">Course</label>
+          <input class="input" id="courseNameInput" value="${escapeHtml(ui.setupDraft.courseName)}" />
+        </div>
+        <div>
+          <label class="label">Dollar value per dot</label>
+          <input class="number" type="number" id="valuePerDotInput" value="${escapeHtml(ui.setupDraft.valuePerDot)}" />
+        </div>
+      </div>
+
+      <div>
+        <label class="label">Players</label>
+        <div class="row">
+          <input class="input" id="newPlayer" placeholder="Add a player" />
+          <button class="btn primary" data-add-player="1">Add</button>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          ${state.players.map(player=>`
+            <div class="player-chip">
+              <span>${player}</span>
+              <button data-remove-player="${escapeAttr(player)}">✕</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div>
+        <label class="label">Scorecard color mode</label>
+        <div class="grid grid-3">
+          ${[
+            ['frontBack','Front / Back','Front 9 and back 9 use different colors.'],
+            ['alternating','Alternating holes','Odd and even holes alternate for easier scanning.'],
+            ['neutral','Neutral','Clean white cards with no color coding.']
+          ].map(([value,title,desc])=>`
+            <button class="btn ${state.settings.colorMode===value?'primary':''}" data-color-mode="${value}" style="text-align:left;">
+              <div style="font-weight:700;">${title}</div>
+              <div style="font-size:14px;${state.settings.colorMode===value?'color:#cbd5e1;':'color:#64748b;'}">${desc}</div>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card" style="padding:14px;">
+          <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;">
+            <div>
+              <div style="font-weight:700;">Double Luigi overrides Luigi</div>
+              <div class="muted" style="font-size:14px;">Prevents both from counting on the same GIR.</div>
+            </div>
+            <input type="checkbox" ${state.settings.doubleLuigiOverridesLuigi?'checked':''} data-setting-toggle="doubleLuigiOverridesLuigi" />
+          </div>
+        </div>
+        <div class="card" style="padding:14px;">
+          <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;">
+            <div>
+              <div style="font-weight:700;">Allow stacking on a hole</div>
+              <div class="muted" style="font-size:14px;">Turn off if your group wants one dot type max per hole.</div>
+            </div>
+            <input type="checkbox" ${state.settings.allowStacking?'checked':''} data-setting-toggle="allowStacking" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function renderLegend(){
+  const scoring = DOT_DEFS.filter(d=>d.type!=='penalty');
+  const penalty = DOT_DEFS.filter(d=>d.type==='penalty');
+  return `
+  <div class="card">
+    <div class="card-h">
+      <div style="font-size:20px;font-weight:700;">Dots legend</div>
+      <div class="muted">Scoring dots, skins, and penalties.</div>
+    </div>
+    <div class="card-b">
+      <div class="grid grid-2">
+        <div class="space-y">
+          <div style="font-size:18px;font-weight:700;">Scoring dots</div>
+          ${scoring.map(dot=>`
+            <div class="legend-item">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+                <div style="font-weight:700;">${dot.name}</div>
+                <span class="badge">+${dot.value}</span>
+              </div>
+              <div class="muted" style="margin-top:6px;font-size:14px;">${dot.def}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="space-y">
+          <div style="font-size:18px;font-weight:700;">Penalty dots</div>
+          ${penalty.map(dot=>`
+            <div class="legend-item">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+                <div style="font-weight:700;">${dot.name}</div>
+                <span class="badge red">${dot.value}</span>
+              </div>
+              <div class="muted" style="margin-top:6px;font-size:14px;">${dot.def}</div>
+            </div>
+          `).join('')}
+          <div class="legend-item" style="background:#f8fafc;">
+            <div style="font-weight:700;">Suggested house notes</div>
+            <ul class="note-list">
               <li>Agree before the round which dots are active.</li>
-              <li>Decide whether Greenies must be converted to par or better.</li>
-              <li>Decide whether Double Luigi replaces Luigi or stacks with it.</li>
-              <li>Set the dollar value per dot before teeing off.</li>
-              <li>For skins, decide whether each carry adds one extra dot or one extra dollar value to the eventual winner.</li>
+              <li>Decide whether greenies require par or better.</li>
+              <li>Only one player should get Skins Won on a winning hole.</li>
+              <li>If nobody wins outright, skins carry automatically.</li>
             </ul>
           </div>
         </div>
       </div>
     </div>
-  `;
+  </div>`;
 }
-
-function renderModal() {
-  const modal = state.modal;
-  if (!modal.open) return '';
-  const dots = playerHoleDots(modal.player, modal.hole);
-  const total = displayHoleTotal(modal.player, modal.hole);
-  const dotButtons = DOT_DEFS.map((dot) => {
-    const active = dots.includes(dot.id);
-    const skinCarry = dot.id === 'skins' && active ? getSkinCarryValue(modal.player, modal.hole) : 0;
-    const def = dot.id === 'skins' && active && skinCarry > 1
-      ? `${dot.def} Current value: ${skinCarry} dots.`
-      : dot.def;
-    return `
-      <button class="dot-btn ${active ? 'active' : ''}" data-dot-id="${dot.id}">
-        <div class="dot-name-row">
-          <strong>${escapeHtml(dot.name)}</strong>
-          <span class="value-badge ${dot.value < 0 ? 'penalty' : 'positive'}">${showSigned(dot.value)}</span>
-        </div>
-        <div class="${active ? '' : 'muted'}">${escapeHtml(def)}</div>
-      </button>
-    `;
-  }).join('');
-
+function renderSummary(){
+  const totals = moneySummary();
+  const settlements = computeSettlements(totals);
+  const message = buildPayoutMessage(totals, settlements);
   return `
-    <div class="modal open" id="modal-overlay">
-      <div class="modal-card" onclick="event.stopPropagation()">
-        <div class="modal-head">
-          <div>
-            <div class="card-title">${escapeHtml(modal.player)} · Hole ${modal.hole}</div>
-            <div class="card-desc">Tap any dot to add or remove it from this hole. Skins automatically carry until a single player wins one.</div>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-h">
+        <div style="font-size:20px;font-weight:700;">Leaderboard</div>
+        <div class="muted">Total dots and cash value.</div>
+      </div>
+      <div class="card-b space-y">
+        ${totals.map((item, idx)=>`
+          <div class="leader-item" style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+            <div>
+              <div class="muted" style="font-size:12px;">#${idx+1}</div>
+              <div style="font-weight:700;font-size:20px;">${item.name}</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="big ${item.dots>0?'pos':item.dots<0?'neg':''}" style="font-size:24px;">${item.dots>0?`+${item.dots}`:item.dots} dots</div>
+              <div class="muted">$${item.money.toFixed(2)}</div>
+            </div>
           </div>
-          <button class="close-btn" id="close-modal">×</button>
-        </div>
-        <div class="modal-total">
-          <div>
-            <div class="muted">Hole total</div>
-            <div class="big ${totalClass(total)}">${showSigned(total)}</div>
-          </div>
-          <button class="small-btn" id="clear-hole">Clear hole</button>
-        </div>
-        <div class="dot-grid">${dotButtons}</div>
+        `).join('')}
       </div>
     </div>
-  `;
+    <div class="card">
+      <div class="card-h">
+        <div style="font-size:20px;font-weight:700;">Settle up</div>
+        <div class="muted">Exact player-to-player payouts plus a shareable message.</div>
+      </div>
+      <div class="card-b space-y">
+        <div class="row">
+          <button class="btn" data-copy-payout="1">${ui.copied ? 'Copied' : 'Copy payout text'}</button>
+          <button class="btn" data-share-payout="1">Share payout text</button>
+        </div>
+        <div class="legend-item" style="background:#f8fafc;">
+          <div style="font-weight:700;margin-bottom:10px;">Player-to-player payouts</div>
+          <div class="space-y">
+            ${settlements.length ? settlements.map(item=>`
+              <div class="settle-item" style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                <span>${item.from} → ${item.to}</span>
+                <strong>$${item.amount.toFixed(2)}</strong>
+              </div>
+            `).join('') : `<div class="muted">No payouts needed.</div>`}
+          </div>
+        </div>
+        <div>
+          <div style="font-weight:700;margin-bottom:8px;">Shareable payout message</div>
+          <pre class="share">${escapeHtml(message)}</pre>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
-
-function render() {
+function renderDialog(){
+  if(!ui.dialogOpen) return '';
+  const skinMap = skinsWinnerMap();
+  return `
+  <div class="dialog-backdrop open" id="dialogBackdrop">
+    <div class="dialog">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:24px;font-weight:800;">Hole ${ui.currentHole} · all players</div>
+          <div class="muted">Update every player from one popup. If exactly one player has Skins Won on this hole, carryover is applied automatically.</div>
+        </div>
+        <button class="btn" data-close-dialog="1">Close</button>
+      </div>
+      <div class="grid grid-players" style="margin-top:14px;">
+        ${state.players.map(player=>{
+          const dots = playerHoleDots(player, ui.currentHole);
+          const total = displayHoleTotal(player, ui.currentHole);
+          const skinInfo = skinMap[ui.currentHole];
+          return `
+            <div class="card">
+              <div class="card-b space-y">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                  <div>
+                    <div style="font-size:20px;font-weight:700;">${player}</div>
+                    <div class="muted">${total > 0 ? '+'+total : total} on hole ${ui.currentHole}</div>
+                  </div>
+                  <button class="btn small" data-clear-hole="${escapeAttr(player)}">Clear</button>
+                </div>
+                <div class="row">
+                  ${dots.length ? dots.map(id=>{
+                    const label = id === 'skins' && skinInfo && skinInfo.winner===player && skinInfo.value>1 ? `Skins x${skinInfo.value}` : getDot(id).name;
+                    return `<span class="badge">${label}</span>`;
+                  }).join('') : `<span class="muted" style="font-size:14px;">No dots yet.</span>`}
+                </div>
+                <div class="dot-grid">
+                  ${DOT_DEFS.map(dot=>{
+                    const active = dots.includes(dot.id);
+                    return `
+                      <button class="dot-btn ${active?'active':''}" data-toggle-dot="${escapeAttr(player)}|${ui.currentHole}|${dot.id}">
+                        <div class="dot-name">
+                          <span>${dot.name}</span>
+                          <span class="badge ${active?'dark':dot.type==='penalty'?'red':''}">${dot.value > 0 ? '+'+dot.value : dot.value}</span>
+                        </div>
+                        <div style="font-size:12px; margin-top:5px; ${active?'color:#cbd5e1;':'color:#64748b;'}">${dot.def}</div>
+                      </button>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+function render(){
   const app = document.getElementById('app');
   app.innerHTML = `
-    <div class="container">
+    <div class="container space-y">
       <div class="header">
         <div>
-          <div class="pill">⛳ Golf Dots Tracker</div>
-          <div class="title">Live side game scorecard</div>
-          <div class="subtitle">Track dots by hole, total the front and back, and settle up fast.</div>
+          <div class="title-pill">⛳ Golf Dots Tracker</div>
+          <h1>Live side game scorecard</h1>
+          <p class="sub">Hole-by-hole tracking, skins carryover, payouts, and shareable settlement text.</p>
         </div>
-        <button class="action-btn" id="reset-round">Reset demo round</button>
+        <button class="btn" data-reset-round="1">Reset round</button>
       </div>
 
-      <div class="tabs-wrap">
-        <div class="tabs">${renderTabs()}</div>
-      </div>
+      ${renderTabs()}
 
-      <section class="section ${state.activeTab === 'scorecard' ? 'active' : ''}">${renderScorecard()}</section>
-      <section class="section ${state.activeTab === 'setup' ? 'active' : ''}">${renderSetup()}</section>
-      <section class="section ${state.activeTab === 'legend' ? 'active' : ''}">${renderLegend()}</section>
-      <section class="section ${state.activeTab === 'summary' ? 'active' : ''}">${renderSummary()}</section>
+      <div class="${ui.tab==='scorecard'?'':'hidden'}">${renderScorecard()}</div>
+      <div class="${ui.tab==='setup'?'':'hidden'}">${renderSetup()}</div>
+      <div class="${ui.tab==='legend'?'':'hidden'}">${renderLegend()}</div>
+      <div class="${ui.tab==='summary'?'':'hidden'}">${renderSummary()}</div>
+
+      ${renderDialog()}
+
+      <div class="footer-note">Version 3 · Static GitHub Pages build</div>
     </div>
-    ${renderModal()}
   `;
-
   bindEvents();
 }
-
-function bindEvents() {
-  document.querySelectorAll('[data-tab]').forEach((btn) => btn.addEventListener('click', () => setTab(btn.dataset.tab)));
-  const resetBtn = document.getElementById('reset-round');
-  if (resetBtn) resetBtn.addEventListener('click', resetRound);
-
-  document.querySelectorAll('[data-edit-player]').forEach((btn) => {
-    btn.addEventListener('click', () => openModal(btn.dataset.editPlayer, Number(btn.dataset.editHole)));
+function bindEvents(){
+  document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>setTab(el.dataset.tab));
+  document.querySelector('[data-reset-round]')?.addEventListener('click', resetRound);
+  document.querySelector('[data-prev-hole]')?.addEventListener('click', ()=>{ if(ui.currentHole>1){ ui.currentHole--; render(); }});
+  document.querySelector('[data-next-hole]')?.addEventListener('click', ()=>{ if(ui.currentHole<18){ ui.currentHole++; render(); }});
+  document.querySelectorAll('[data-hole]').forEach(el=>el.onclick=()=>{ ui.currentHole = Number(el.dataset.hole); render(); });
+  document.querySelector('[data-open-dialog]')?.addEventListener('click', ()=>{ ui.dialogOpen = true; render(); });
+  document.querySelector('[data-close-dialog]')?.addEventListener('click', ()=>{ ui.dialogOpen = false; render(); });
+  document.getElementById('dialogBackdrop')?.addEventListener('click', (e)=>{ if(e.target.id==='dialogBackdrop'){ ui.dialogOpen=false; render(); }});
+  document.querySelectorAll('[data-toggle-dot]').forEach(el=>el.onclick=()=>{
+    const [player,hole,id] = el.dataset.toggleDot.split('|');
+    toggleDot(player, Number(hole), id);
   });
-  document.querySelectorAll('[data-jump-hole]').forEach((btn) => {
-    btn.addEventListener('click', () => { state.currentHole = Number(btn.dataset.jumpHole); persist(); render(); });
-  });
-  const prevHole = document.getElementById('prev-hole');
-  if (prevHole) prevHole.addEventListener('click', () => { state.currentHole = Math.max(1, Number(state.currentHole || 1) - 1); persist(); render(); });
-  const nextHole = document.getElementById('next-hole');
-  if (nextHole) nextHole.addEventListener('click', () => { state.currentHole = Math.min(18, Number(state.currentHole || 1) + 1); persist(); render(); });
-
-  const roundName = document.getElementById('round-name');
-  if (roundName) {
-    roundName.addEventListener('input', (e) => updateField('roundName', e.target.value, false));
-    roundName.addEventListener('change', (e) => updateField('roundName', e.target.value, true));
-    roundName.addEventListener('blur', (e) => updateField('roundName', e.target.value, true));
+  document.querySelectorAll('[data-clear-hole]').forEach(el=>el.onclick=()=>clearHole(el.dataset.clearHole, ui.currentHole));
+  document.querySelector('[data-add-player]')?.addEventListener('click', addPlayer);
+  document.getElementById('newPlayer')?.addEventListener('keydown', (e)=>{ if(e.key==='Enter') addPlayer(); });
+  document.querySelectorAll('[data-remove-player]').forEach(el=>el.onclick=()=>removePlayer(el.dataset.removePlayer));
+  document.querySelectorAll('[data-color-mode]').forEach(el=>el.onclick=()=>{ state.settings.colorMode = el.dataset.colorMode; saveState(); render(); });
+  document.querySelectorAll('[data-setting-toggle]').forEach(el=>el.addEventListener('change', ()=>{
+    state.settings[el.dataset.settingToggle] = el.checked; saveState(); render();
+  }));
+  const rn = document.getElementById('roundNameInput');
+  if(rn){
+    rn.addEventListener('input', e=>ui.setupDraft.roundName = e.target.value);
+    rn.addEventListener('blur', e=>commitSetupField('roundName', e.target.value));
   }
-  const courseName = document.getElementById('course-name');
-  if (courseName) {
-    courseName.addEventListener('input', (e) => updateField('courseName', e.target.value, false));
-    courseName.addEventListener('change', (e) => updateField('courseName', e.target.value, true));
-    courseName.addEventListener('blur', (e) => updateField('courseName', e.target.value, true));
+  const cn = document.getElementById('courseNameInput');
+  if(cn){
+    cn.addEventListener('input', e=>ui.setupDraft.courseName = e.target.value);
+    cn.addEventListener('blur', e=>commitSetupField('courseName', e.target.value));
   }
-  const valuePerDot = document.getElementById('value-per-dot');
-  if (valuePerDot) {
-    valuePerDot.addEventListener('input', (e) => updateField('valuePerDot', Number(e.target.value || 0), false));
-    valuePerDot.addEventListener('change', (e) => updateField('valuePerDot', Number(e.target.value || 0), true));
-    valuePerDot.addEventListener('blur', (e) => updateField('valuePerDot', Number(e.target.value || 0), true));
+  const vd = document.getElementById('valuePerDotInput');
+  if(vd){
+    vd.addEventListener('input', e=>ui.setupDraft.valuePerDot = e.target.value);
+    vd.addEventListener('blur', e=>commitSetupField('valuePerDot', e.target.value));
   }
-
-  const addBtn = document.getElementById('add-player-btn');
-  if (addBtn) addBtn.addEventListener('click', addPlayer);
-  const newPlayer = document.getElementById('new-player');
-  if (newPlayer) newPlayer.addEventListener('keydown', (e) => { if (e.key === 'Enter') addPlayer(); });
-
-  document.querySelectorAll('[data-remove-player]').forEach((btn) => btn.addEventListener('click', () => removePlayer(btn.dataset.removePlayer)));
-  document.querySelectorAll('[data-color-mode]').forEach((btn) => btn.addEventListener('click', () => updateSetting('colorMode', btn.dataset.colorMode)));
-
-  const dl = document.getElementById('setting-double-luigi');
-  if (dl) dl.addEventListener('change', (e) => updateSetting('doubleLuigiOverridesLuigi', e.target.checked));
-  const stacking = document.getElementById('setting-stacking');
-  if (stacking) stacking.addEventListener('change', (e) => updateSetting('allowStacking', e.target.checked));
-
-  const modalOverlay = document.getElementById('modal-overlay');
-  if (modalOverlay) modalOverlay.addEventListener('click', closeModal);
-  const closeBtn = document.getElementById('close-modal');
-  if (closeBtn) closeBtn.addEventListener('click', closeModal);
-  const clearBtn = document.getElementById('clear-hole');
-  if (clearBtn) clearBtn.addEventListener('click', clearHole);
-  document.querySelectorAll('[data-dot-id]').forEach((btn) => btn.addEventListener('click', () => toggleDot(btn.dataset.dotId)));
+  document.querySelector('[data-copy-payout]')?.addEventListener('click', copyPayout);
+  document.querySelector('[data-share-payout]')?.addEventListener('click', sharePayout);
 }
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
+function escapeAttr(str){ return escapeHtml(str); }
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  });
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 }
-
 render();
